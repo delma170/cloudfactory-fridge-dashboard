@@ -18,7 +18,7 @@
       border-radius: 10px;
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
       width: 90%;
-      max-width: 900px;
+      max-width: 1000px;
     }
     canvas {
       margin-top: 2rem;
@@ -34,13 +34,15 @@
   <div class="container">
     <label for="period">Select period: </label>
     <select id="period">
+      <option value="1">1 Hour</option>
       <option value="6">6 Hours</option>
       <option value="12">12 Hours</option>
       <option value="24" selected>24 Hours</option>
-      <option value="48">48 Hours</option>
-      <option value="72">72 Hours</option>
+      <option value="168">7 Days</option>
+      <option value="720">30 Days</option>
+      <option value="4320">6 Months</option>
     </select>
-    <canvas id="fridgeChart" height="100"></canvas>
+    <canvas id="fridgeChart" height="120"></canvas>
   </div>
 
   <script>
@@ -53,44 +55,47 @@
     }
 
     function renderChart(data) {
-      const labels = data.timestamps;
+      const datasets = [];
+      const colors = {
+        temperature: '#FF6384',
+        humidity: '#36A2EB',
+        battery: '#FFCE56'
+      };
 
-      const datasets = [
-        {
-          label: 'Temperature (°C)',
-          data: data.temperature,
-          borderColor: '#FF6384',
-          backgroundColor: 'rgba(255, 99, 132, 0.1)',
-          yAxisID: 'y-temp',
-        },
-        {
-          label: 'Humidity (%)',
-          data: data.humidity,
-          borderColor: '#36A2EB',
-          backgroundColor: 'rgba(54, 162, 235, 0.1)',
-          yAxisID: 'y-hum',
-        },
-        {
-          label: 'Battery (%)',
-          data: data.battery,
-          borderColor: '#FFCE56',
-          backgroundColor: 'rgba(255, 206, 86, 0.1)',
-          yAxisID: 'y-batt',
-        }
-      ];
+      const fridges = Object.keys(data);
+
+      fridges.forEach(fridge => {
+        ['temperature', 'humidity', 'battery'].forEach(metric => {
+          datasets.push({
+            label: `${fridge} ${metric}`,
+            data: data[fridge][metric],
+            borderColor: colors[metric],
+            backgroundColor: colors[metric] + '33',
+            yAxisID: `y-${metric}`,
+            tension: 0.2
+          });
+        });
+      });
+
+      const timestamps = data[fridges[0]].temperature.map(point => point.x);
 
       if (fridgeChart) fridgeChart.destroy();
 
       fridgeChart = new Chart(ctx, {
         type: 'line',
         data: {
-          labels,
+          labels: timestamps,
           datasets
         },
         options: {
           responsive: true,
+          interaction: {
+            mode: 'index',
+            intersect: false
+          },
+          stacked: false,
           scales: {
-            'y-temp': {
+            'y-temperature': {
               type: 'linear',
               position: 'left',
               min: 0,
@@ -99,18 +104,18 @@
                 display: true,
                 text: 'Temperature (°C)'
               },
-              grid: { drawOnChartArea: false },
               ticks: {
                 callback: function (value) {
                   if (value >= 8 && value <= 15) return `⚠️ ${value}`;
                   return value;
                 },
-                color: function(value) {
-                  return value.tick.value >= 8 && value.tick.value <= 15 ? 'red' : 'black';
+                color: function(ctx) {
+                  const v = ctx.tick.value;
+                  return (v >= 8 && v <= 15) ? 'red' : 'black';
                 }
               }
             },
-            'y-hum': {
+            'y-humidity': {
               type: 'linear',
               position: 'right',
               min: 0,
@@ -119,9 +124,9 @@
                 display: true,
                 text: 'Humidity (%)'
               },
-              grid: { drawOnChartArea: false },
+              grid: { drawOnChartArea: false }
             },
-            'y-batt': {
+            'y-battery': {
               type: 'linear',
               position: 'right',
               display: false
