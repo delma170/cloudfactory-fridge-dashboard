@@ -1,38 +1,58 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <title>Fridge Dashboard</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-      body {
-        font-family: sans-serif;
-        padding: 2rem;
-        text-align: center;
-        background: #f8f8f8;
-      }
-      h1 {
-        margin-bottom: 1rem;
-      }
-      .container {
-        background: white;
-        padding: 2rem;
-        border-radius: 10px;
-        max-width: 900px;
-        margin: auto;
-        box-shadow: 0 0 20px rgba(0, 0, 0, 0.05);
-      }
-      select {
-        padding: 0.5rem;
-        font-size: 1rem;
-        margin-bottom: 1.5rem;
-      }
-      canvas {
-        margin-top: 1.5rem;
-      }
-    </style>
-  </head>
+<head>
+  <meta charset="UTF-8" />
+  <title>Cloud Factory Fridge Dashboard</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #fafafa;
+      padding: 2rem;
+      text-align: center;
+    }
+    h1 {
+      font-size: 2rem;
+    }
+    .temp {
+      margin: 1.5rem 0;
+      font-size: 1.5rem;
+      font-weight: bold;
+    }
+    .error {
+      color: red;
+    }
+  </style>
+</head>
+<body>
+  <h1>Fridge Dashboard</h1>
 
-  <body>
-    <div class="container">
-      <h1>Fr
+  <div class="temp" id="kitchen">Loading kitchen...</div>
+  <div class="temp" id="pizza1">Loading pizza 1...</div>
+  <div class="temp" id="pizza2">Loading pizza 2...</div>
+
+  <script>
+    const sensors = {
+      kitchen: "sensor.0x00158d008b77ac1d_temperature",
+      pizza1: "sensor.0x00158d008b77bf5e_temperature",
+      pizza2: "sensor.0x00158d008b77ac43_temperature"
+    };
+
+    async function fetchSensor(sensorId, elementId) {
+      try {
+        const res = await fetch(`/api/fridge?sensor=${sensorId}`);
+        if (!res.ok) throw new Error("Fetch failed");
+        const data = await res.json();
+        document.getElementById(elementId).innerText =
+          `${data.friendly_name}: ${data.value} °C`;
+      } catch (err) {
+        document.getElementById(elementId).innerText = "Error loading data";
+        document.getElementById(elementId).classList.add("error");
+      }
+    }
+
+    for (let [id, sensor] of Object.entries(sensors)) {
+      fetchSensor(sensor, id);
+    }
+  </script>
+</body>
+</html>
