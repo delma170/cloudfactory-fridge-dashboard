@@ -1,157 +1,96 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>Cloud Factory Fridge Dashboard</title>
+    <title>Fridge Dashboard</title>
     <meta charset="UTF-8" />
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
       body {
         font-family: sans-serif;
         padding: 2rem;
-        background: #f9f9f9;
         text-align: center;
       }
-      h1 {
-        margin-bottom: 2rem;
-      }
-      .chart-container {
-        width: 90%;
-        max-width: 800px;
-        margin: 2rem auto;
-        background: white;
-        border-radius: 10px;
-        padding: 1rem;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-      }
       canvas {
-        margin-top: 1rem;
+        width: 100%;
+        max-width: 800px;
+        margin: auto;
       }
     </style>
   </head>
   <body>
     <h1>Fridge Dashboard</h1>
-
-    <label for="range">Show data from the past:
-      <select id="range">
-        <option value="1">1 hour</option>
+    <label>Show data from the past: 
+      <select id="time-range">
         <option value="6">6 hours</option>
         <option value="12">12 hours</option>
-        <option value="24">24 hours</option>
+        <option value="24" selected>24 hours</option>
         <option value="48">48 hours</option>
       </select>
     </label>
 
-    <div class="chart-container">
-      <h2>Fridge Kitchen</h2>
-      <canvas id="kitchenChart"></canvas>
-    </div>
-    <div class="chart-container">
-      <h2>Pizza Fridge 1</h2>
-      <canvas id="pizza1Chart"></canvas>
-    </div>
-    <div class="chart-container">
-      <h2>Pizza Fridge 2</h2>
-      <canvas id="pizza2Chart"></canvas>
-    </div>
+    <canvas id="chart"></canvas>
 
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
-      const sensors = {
-        kitchen: "sensor.0x00158d008b77ac1d_temperature",
-        pizza1: "sensor.0x00158d008b77bf5e_temperature",
-        pizza2: "sensor.0x00158d008b77ac43_temperature"
-      };
+      const ctx = document.getElementById('chart').getContext('2d');
 
-      const batterySensors = {
-        kitchen: "sensor.0x00158d008b77ac1d_battery",
-        pizza1: "sensor.0x00158d008b77bf5e_battery",
-        pizza2: "sensor.0x00158d008b77ac43_battery"
-      };
-
-      const humiditySensors = {
-        kitchen: "sensor.0x00158d008b77ac1d_humidity",
-        pizza1: "sensor.0x00158d008b77bf5e_humidity",
-        pizza2: "sensor.0x00158d008b77ac43_humidity"
-      };
-
-      const chartRefs = {
-        kitchen: new Chart(document.getElementById("kitchenChart"), config("Fridge Kitchen")),
-        pizza1: new Chart(document.getElementById("pizza1Chart"), config("Pizza Fridge 1")),
-        pizza2: new Chart(document.getElementById("pizza2Chart"), config("Pizza Fridge 2"))
-      };
-
-      function config(label) {
-        return {
-          type: 'line',
-          data: {
-            labels: [],
-            datasets: [
-              {
-                label: "Temperature (°C)",
-                borderColor: "#ff6384",
-                backgroundColor: "#ff6384",
-                fill: false,
-                data: []
-              },
-              {
-                label: "Humidity (%)",
-                borderColor: "#36a2eb",
-                backgroundColor: "#36a2eb",
-                fill: false,
-                data: []
-              },
-              {
-                label: "Battery (%)",
-                borderColor: "#ffce56",
-                backgroundColor: "#ffce56",
-                fill: false,
-                data: []
-              }
-            ]
-          },
-          options: {
-            responsive: true,
-            scales: {
-              x: { title: { display: true, text: 'Time' } },
-              y: {
-                title: { display: true, text: 'Value' },
-                suggestedMin: 0,
-                suggestedMax: 100
-              }
-            }
+      let chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: []
+        },
+        options: {
+          responsive: true,
+          scales: {
+            x: { title: { display: true, text: 'Time' } },
+            y: { title: { display: true, text: 'Value' } }
           }
-        };
-      }
+        }
+      });
 
-      async function fetchSensorHistory(sensor, hours) {
-        const end = new Date();
-        const start = new Date(end.getTime() - hours * 60 * 60 * 1000);
-        const url = `/api/history?sensor=${sensor}&start=${start.toISOString()}&end=${end.toISOString()}`;
-        const res = await fetch(url);
-        return res.ok ? res.json() : [];
-      }
+      async function loadChartData(hours = 24) {
+        try {
+          const res = await fetch(`/api/history?hours=${hours}`);
+          const data = await res.json();
 
-      async function updateCharts(hours) {
-        for (const key of Object.keys(sensors)) {
-          const [temp, hum, bat] = await Promise.all([
-            fetchSensorHistory(sensors[key], hours),
-            fetchSensorHistory(humiditySensors[key], hours),
-            fetchSensorHistory(batterySensors[key], hours)
-          ]);
+          const labels = [];
+          const datasets = {
+            temperature: { label: 'Temperature (°C)', borderColor: 'red', data: [], fill: false },
+            humidity: { label: 'Humidity (%)', borderColor: 'blue', data: [], fill: false },
+            battery: { label: 'Battery (%)', borderColor: 'orange', data: [], fill: false }
+          };
 
-          const chart = chartRefs[key];
-          chart.data.labels = temp.map(e => new Date(e.last_changed).toLocaleTimeString());
-          chart.data.datasets[0].data = temp.map(e => parseFloat(e.state));
-          chart.data.datasets[1].data = hum.map(e => parseFloat(e.state));
-          chart.data.datasets[2].data = bat.map(e => parseFloat(e.state));
+          data.forEach(sensorData => {
+            sensorData.forEach(entry => {
+              const time = new Date(entry.last_changed).toLocaleTimeString();
+              if (!labels.includes(time)) labels.push(time);
+
+              if (entry.entity_id.includes('temperature')) {
+                datasets.temperature.data.push({ x: time, y: parseFloat(entry.state) });
+              } else if (entry.entity_id.includes('humidity')) {
+                datasets.humidity.data.push({ x: time, y: parseFloat(entry.state) });
+              } else if (entry.entity_id.includes('battery')) {
+                datasets.battery.data.push({ x: time, y: parseFloat(entry.state) });
+              }
+            });
+          });
+
+          chart.data.labels = labels;
+          chart.data.datasets = Object.values(datasets);
           chart.update();
+        } catch (err) {
+          console.error('Error loading data:', err);
         }
       }
 
-      document.getElementById("range").addEventListener("change", e => {
-        updateCharts(parseInt(e.target.value));
-      });
+      // Initial load
+      loadChartData();
 
-      updateCharts(1); // default
+      // Change range
+      document.getElementById('time-range').addEventListener('change', (e) => {
+        const selectedHours = parseInt(e.target.value);
+        loadChartData(selectedHours);
+      });
     </script>
   </body>
 </html>
