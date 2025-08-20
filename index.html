@@ -1,58 +1,81 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <title>Cloud Factory Fridge Dashboard</title>
-  <style>
-    body {
-      font-family: sans-serif;
-      background: #fafafa;
-      padding: 2rem;
-      text-align: center;
-    }
-    h1 {
-      font-size: 2rem;
-    }
-    .temp {
-      margin: 1.5rem 0;
-      font-size: 1.5rem;
-      font-weight: bold;
-    }
-    .error {
-      color: red;
-    }
-  </style>
-</head>
-<body>
-  <h1>Fridge Dashboard</h1>
-
-  <div class="temp" id="kitchen">Loading kitchen...</div>
-  <div class="temp" id="pizza1">Loading pizza 1...</div>
-  <div class="temp" id="pizza2">Loading pizza 2...</div>
-
-  <script>
-    const sensors = {
-      kitchen: "sensor.0x00158d008b77ac1d_temperature",
-      pizza1: "sensor.0x00158d008b77bf5e_temperature",
-      pizza2: "sensor.0x00158d008b77ac43_temperature"
-    };
-
-    async function fetchSensor(sensorId, elementId) {
-      try {
-        const res = await fetch(`/api/fridge?sensor=${sensorId}`);
-        if (!res.ok) throw new Error("Fetch failed");
-        const data = await res.json();
-        document.getElementById(elementId).innerText =
-          `${data.friendly_name}: ${data.value} °C`;
-      } catch (err) {
-        document.getElementById(elementId).innerText = "Error loading data";
-        document.getElementById(elementId).classList.add("error");
+  <head>
+    <meta charset="UTF-8" />
+    <title>Cloud Factory Fridge Dashboard</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        padding: 2rem;
+        background-color: #f8f8f8;
+        text-align: center;
       }
-    }
+      h1 {
+        font-size: 2.5rem;
+        margin-bottom: 2rem;
+      }
+      .fridge {
+        background: white;
+        padding: 1.5rem;
+        margin: 1rem auto;
+        max-width: 500px;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      }
+      .name {
+        font-weight: bold;
+        font-size: 1.2rem;
+        margin-bottom: 0.5rem;
+      }
+      .temp {
+        font-size: 2rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Cloud Factory Fridge Dashboard</h1>
 
-    for (let [id, sensor] of Object.entries(sensors)) {
-      fetchSensor(sensor, id);
-    }
-  </script>
-</body>
+    <div class="fridge">
+      <div class="name" id="kitchen-name">Loading...</div>
+      <div class="temp" id="kitchen-temp">-- °C</div>
+    </div>
+
+    <div class="fridge">
+      <div class="name" id="pizza1-name">Loading...</div>
+      <div class="temp" id="pizza1-temp">-- °C</div>
+    </div>
+
+    <div class="fridge">
+      <div class="name" id="pizza2-name">Loading...</div>
+      <div class="temp" id="pizza2-temp">-- °C</div>
+    </div>
+
+    <script>
+      async function fetchFridgeData() {
+        try {
+          const res = await fetch('/api/fridge-data');
+          const data = await res.json();
+
+          const update = (id, info) => {
+            if (info && !info.error) {
+              document.getElementById(`${id}-name`).innerText = info.name;
+              document.getElementById(`${id}-temp`).innerText = `${info.state} °C`;
+            } else {
+              document.getElementById(`${id}-name`).innerText = 'Error';
+              document.getElementById(`${id}-temp`).innerText = '--';
+            }
+          };
+
+          update('kitchen', data.kitchen);
+          update('pizza1', data.pizza1);
+          update('pizza2', data.pizza2);
+        } catch (err) {
+          console.error('Failed to load fridge data:', err);
+        }
+      }
+
+      fetchFridgeData();
+      setInterval(fetchFridgeData, 60_000); // refresh every 60s
+    </script>
+  </body>
 </html>
