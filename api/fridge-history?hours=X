@@ -1,0 +1,62 @@
+export default async function handler(req, res) {
+  const token = process.env.HA_TOKEN;
+  const baseUrl = process.env.HA_BASE_URL;
+
+  const { hours } = req.query;
+  const endTime = new Date();
+  const startTime = new Date(endTime.getTime() - hours * 60 * 60 * 1000);
+
+  const sensors = {
+    kitchen: {
+      temperature: "sensor.0x00158d008b77ac1d_temperature",
+      humidity: "sensor.0x00158d008b77ac1d_humidity",
+      battery: "sensor.0x00158d008b77ac1d_battery"
+    },
+    pizza1: {
+      temperature: "sensor.0x00158d008b77bf5e_temperature",
+      humidity: "sensor.0x00158d008b77bf5e_humidity",
+      battery: "sensor.0x00158d008b77bf5e_battery"
+    },
+    pizza2: {
+      temperature: "sensor.0x00158d008b77ac43_temperature",
+      humidity: "sensor.0x00158d008b77ac43_humidity",
+      battery: "sensor.0x00158d008b77ac43_battery"
+    }
+  };
+
+  async function fetchHistory(entity_id) {
+    const url = `${baseUrl}/api/history/period/${startTime.toISOString()}?filter_entity_id=${entity_id}&end_time=${endTime.toISOString()}`;
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json"
+      }
+    });
+
+    if (!response.ok) throw new Error(`Failed to fetch ${entity_id}`);
+    const json = await response.json();
+    return json[0] || [];
+  }
+
+  try {
+    const result = {};
+
+    for (const [fridge, entities] of Object.entries(sensors)) {
+      const [tempHistory, humHistory, battHistory] = await Promise.all([
+        fetchHistory(entities.temperature),
+        fetchHistory(entities.humidity),
+        fetchHistory(entities.battery)
+      ]);
+
+      result[fridge] = {
+        temperature: tempHistory.map(p => ({ x: p.last_changed, y: parseFloat(p.state) })),
+        humidity: humHistory.map(p => ({ x: p.last_changed, y: parseFloat(p.state) })),
+        battery: battHistory.map(p => ({ x: p.last_changed, y: parseFloat(p.state) }))
+      };
+    }
+
+    res.status(200).json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+}
