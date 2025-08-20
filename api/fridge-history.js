@@ -1,58 +1,64 @@
 export default async function handler(req, res) {
-  const token = process.env.HA_TOKEN;
-  const baseUrl = process.env.HA_BASE_URL;
-  const hours = parseInt(req.query.hours || "24", 10);
+  const token = process.env.HA_TOKEN;           // from Vercel Environment Variables
+  const baseUrl = process.env.HA_BASE_URL;      // e.g., https://your-home-assistant-url
 
-  const sensors = {
+  const hours = parseInt(req.query.hours) || 24;
+
+  // Define all sensor IDs for each fridge and metric
+  const sensorMap = {
     kitchen: {
-      temp: "sensor.0x00158d008b77ac1d_temperature",
-      hum: "sensor.0x00158d008b77ac1d_humidity",
-      batt: "sensor.0x00158d008b77ac1d_battery"
+      temperature: "sensor.0x00158d008b77ac1d_temperature",
+      humidity: "sensor.0x00158d008b77ac1d_humidity",
+      battery: "sensor.0x00158d008b77ac1d_battery"
     },
     pizza1: {
-      temp: "sensor.0x00158d008b77bf5e_temperature",
-      hum: "sensor.0x00158d008b77bf5e_humidity",
-      batt: "sensor.0x00158d008b77bf5e_battery"
+      temperature: "sensor.0x00158d008b77bf5e_temperature",
+      humidity: "sensor.0x00158d008b77bf5e_humidity",
+      battery: "sensor.0x00158d008b77bf5e_battery"
     },
     pizza2: {
-      temp: "sensor.0x00158d008b77ac43_temperature",
-      hum: "sensor.0x00158d008b77ac43_humidity",
-      batt: "sensor.0x00158d008b77ac43_battery"
+      temperature: "sensor.0x00158d008b77ac43_temperature",
+      humidity: "sensor.0x00158d008b77ac43_humidity",
+      battery: "sensor.0x00158d008b77ac43_battery"
     }
   };
 
-  const end = new Date();
-  const start = new Date(end.getTime() - hours * 60 * 60 * 1000);
-
-  const params = new URLSearchParams({
-    start_time: start.toISOString(),
-    end_time: end.toISOString()
-  });
+  // Time range
+  const endTime = new Date().toISOString();
+  const startTime = new Date(Date.now() - hours * 3600 * 1000).toISOString();
 
   const results = {};
 
-  for (const [fridge, sensorSet] of Object.entries(sensors)) {
-    results[fridge] = {
-      temperature: [],
-      humidity: [],
-      battery: []
-    };
+  for (const [fridge, sensors] of Object.entries(sensorMap)) {
+    results[fridge] = {};
 
-    for (const [type, entity_id] of Object.entries(sensorSet)) {
-      const url = `${baseUrl}/api/history/period/${entity_id}?${params.toString()}`;
-      const response = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json"
+    for (const [metric, entityId] of Object.entries(sensors)) {
+      const url = `${baseUrl}/api/history/period/${startTime}?end_time=${endTime}&filter_entity_id=${entityId}&minimal_response=true`;
+
+      try {
+        const response = await fetch(url, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json"
+          }
+        });
+
+        if (!response.ok) {
+          console.error(`Error fetching ${entityId}: ${response.statusText}`);
+          throw new Error(`Failed to fetch ${entityId}`);
         }
-      });
 
-      const json = await response.json();
-      if (json && json[0]) {
-        results[fridge][type] = json[0].map(point => ({
-          x: point.last_changed,
-          y: parseFloat(point.state)
-        }));
+        const json = await response.json();
+
+        const points = (json[0] || []).map(entry => ({
+          x: entry.last_changed,
+          y: parseFloat(entry.state)
+        })).filter(p => !isNaN(p.y));
+
+        results[fridge][metric] = points;
+      } catch (err) {
+        console.error(`Fetch error for ${entityId}`, err);
+        results[fridge][metric] = [];
       }
     }
   }
