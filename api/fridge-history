@@ -1,35 +1,104 @@
 export default async function handler(req, res) {
   const token = process.env.HA_TOKEN;
-  const baseUrl = process.env.HA_BASE_URL;
+  const baseUrl = process.env.HA_URL;
 
-  const hours = parseInt(req.query.hours) || 24;
-  const from = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+  const hours = parseInt(req.query.hours || '24'); // default to 24h
+  const endTime = new Date();
+  const startTime = new Date(endTime.getTime() - hours * 60 * 60 * 1000);
 
-  const sensorIds = [
-    "sensor.0x00158d008b77ac1d_temperature",  // kitchen temp
-    "sensor.0x00158d008b77ac1d_humidity",     // kitchen humidity
-    "sensor.0x00158d008b77ac1d_battery"       // kitchen battery
+  const sensorEntities = {
+    temperature: [
+      "sensor.0x00158d008b77ac1d_temperature",
+      "sensor.0x00158d008b77bf5e_temperature",
+      "sensor.0x00158d008b77ac43_temperature"
+    ],
+    humidity: [
+      "sensor.0x00158d008b77ac1d_humidity",
+      "sensor.0x00158d008b77bf5e_humidity",
+      "sensor.0x00158d008b77ac43_humidity"
+    ],
+    battery: [
+      "sensor.0x00158d008b77ac1d_battery",
+      "sensor.0x00158d008b77bf5e_battery",
+      "sensor.0x00158d008b77ac43_battery"
+    ]
+  };
+
+  const entityIds = [
+    ...sensorEntities.temperature,
+    ...sensorEntities.humidity,
+    ...sensorEntities.battery
   ];
 
-  const query = sensorIds.map(id => `filter_entity_id=${id}`).join("&");
-  const url = `${baseUrl}/api/history/period/${from}?${query}`;
+  const params = new URLSearchParams({
+    filter_entity_id: entityIds.join(','),
+    start_time: startTime.toISOString(),
+    end_time: endTime.toISOString(),
+    minimal_response: 'true',
+    no_attributes: 'true'
+  });
+
+  const url = `${baseUrl}/api/history/period?${params.toString()}`;
 
   try {
     const response = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` }
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json"
+      }
     });
 
-    if (!response.ok) throw new Error("Failed to fetch");
+    if (!response.ok) {
+      return res.status(response.status).json({ error: "Failed to fetch history" });
+    }
 
-    const history = await response.json();
+    const data = await response.json();
 
-    const timestamps = history[0]?.map(point => point.last_changed) || [];
-    const temperature = history[0]?.map(point => parseFloat(point.state)) || [];
-    const humidity = history[1]?.map(point => parseFloat(point.state)) || [];
-    const battery = history[2]?.map(point => parseFloat(point.state)) || [];
+    // Structure response into graphable datasets
+    const result = {
+      labels: [], // shared time axis
+      kitchen: { temperature: [], humidity: [], battery: [] },
+      pizza1: { temperature: [], humidity: [], battery: [] },
+      pizza2: { temperature: [], humidity: [], battery: [] }
+    };
 
-    res.status(200).json({ timestamps, temperature, humidity, battery });
+    const sensorMap = {
+      "sensor.0x00158d008b77ac1d_temperature": ["kitchen", "temperature"],
+      "sensor.0x00158d008b77bf5e_temperature": ["pizza1", "temperature"],
+      "sensor.0x00158d008b77ac43_temperature": ["pizza2", "temperature"],
+
+      "sensor.0x00158d008b77ac1d_humidity": ["kitchen", "humidity"],
+      "sensor.0x00158d008b77bf5e_humidity": ["pizza1", "humidity"],
+      "sensor.0x00158d008b77ac43_humidity": ["pizza2", "humidity"],
+
+      "sensor.0x00158d008b77ac1d_battery": ["kitchen", "battery"],
+      "sensor.0x00158d008b77bf5e_battery": ["pizza1", "battery"],
+      "sensor.0x00158d008b77ac43_battery": ["pizza2", "battery"]
+    };
+
+    for (const entity of data) {
+      const [sensorId] = entity;
+      const entries = entity;
+
+      const [location, type] = sensorMap[sensorId] || [];
+
+      if (location && type) {
+        const points = entries.map(entry => ({
+          x: entry.last_changed,
+          y: parseFloat(entry.state)
+        })).filter(p => !isNaN(p.y));
+
+        result[location][type] = points;
+
+        if (type === "temperature" && result.labels.length === 0) {
+          result.labels = points.map(p => p.x);
+        }
+      }
+    }
+
+    res.status(200).json(result);
   } catch (error) {
-    res.status(500).json({ error: "Failed to load data", details: error.message });
+    console.error(error);
+    res.status(500).json({ error: "Error fetching historical sensor data" });
   }
 }
