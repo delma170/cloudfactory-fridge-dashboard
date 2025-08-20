@@ -1,88 +1,61 @@
 export default async function handler(req, res) {
-  const token = process.env.HA_TOKEN; // stored in Vercel env vars
-  const baseUrl = process.env.HA_URL; // stored in Vercel env vars
+  const token = process.env.HA_TOKEN;
+  const baseUrl = process.env.HA_BASE_URL;
+  const hours = parseInt(req.query.hours || "24", 10);
 
-  const hours = parseInt(req.query.hours) || 24;
+  const sensors = {
+    kitchen: {
+      temp: "sensor.0x00158d008b77ac1d_temperature",
+      hum: "sensor.0x00158d008b77ac1d_humidity",
+      batt: "sensor.0x00158d008b77ac1d_battery"
+    },
+    pizza1: {
+      temp: "sensor.0x00158d008b77bf5e_temperature",
+      hum: "sensor.0x00158d008b77bf5e_humidity",
+      batt: "sensor.0x00158d008b77bf5e_battery"
+    },
+    pizza2: {
+      temp: "sensor.0x00158d008b77ac43_temperature",
+      hum: "sensor.0x00158d008b77ac43_humidity",
+      batt: "sensor.0x00158d008b77ac43_battery"
+    }
+  };
 
   const end = new Date();
   const start = new Date(end.getTime() - hours * 60 * 60 * 1000);
 
-  const sensorIds = [
-    'sensor.0x00158d008b77ac1d_temperature',
-    'sensor.0x00158d008b77ac1d_humidity',
-    'sensor.0x00158d008b77ac1d_battery',
-    'sensor.0x00158d008b77bf5e_temperature',
-    'sensor.0x00158d008b77bf5e_humidity',
-    'sensor.0x00158d008b77bf5e_battery',
-    'sensor.0x00158d008b77ac43_temperature',
-    'sensor.0x00158d008b77ac43_humidity',
-    'sensor.0x00158d008b77ac43_battery'
-  ];
-
   const params = new URLSearchParams({
     start_time: start.toISOString(),
-    end_time: end.toISOString(),
-    minimal_response: 'true',
-    filter_entity_id: sensorIds.join(',')
+    end_time: end.toISOString()
   });
 
-  try {
-    const response = await fetch(`${baseUrl}/api/history/period?${params.toString()}`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    });
+  const results = {};
 
-    if (!response.ok) {
-      throw new Error(`Failed to fetch history: ${response.statusText}`);
-    }
-
-    const history = await response.json();
-
-    const result = {
-      timestamps: [],
-      kitchen: { temperature: [], humidity: [], battery: [] },
-      pizza1: { temperature: [], humidity: [], battery: [] },
-      pizza2: { temperature: [], humidity: [], battery: [] }
+  for (const [fridge, sensorSet] of Object.entries(sensors)) {
+    results[fridge] = {
+      temperature: [],
+      humidity: [],
+      battery: []
     };
 
-    for (const entity of history) {
-      if (!entity.length) continue;
-
-      const { entity_id } = entity[0];
-      const datapoints = entity.map(e => ({
-        time: e.last_changed,
-        value: parseFloat(e.state)
-      })).filter(e => !isNaN(e.value));
-
-      const pushTo = (target, field) => {
-        if (result.timestamps.length === 0) {
-          result.timestamps = datapoints.map(d => new Date(d.time).toLocaleString());
+    for (const [type, entity_id] of Object.entries(sensorSet)) {
+      const url = `${baseUrl}/api/history/period/${entity_id}?${params.toString()}`;
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
         }
-        result[target][field] = datapoints.map(d => d.value);
-      };
+      });
 
-      if (entity_id.includes('0x00158d008b77ac1d')) {
-        if (entity_id.includes('temperature')) pushTo('kitchen', 'temperature');
-        if (entity_id.includes('humidity')) pushTo('kitchen', 'humidity');
-        if (entity_id.includes('battery')) pushTo('kitchen', 'battery');
-      }
-      if (entity_id.includes('0x00158d008b77bf5e')) {
-        if (entity_id.includes('temperature')) pushTo('pizza1', 'temperature');
-        if (entity_id.includes('humidity')) pushTo('pizza1', 'humidity');
-        if (entity_id.includes('battery')) pushTo('pizza1', 'battery');
-      }
-      if (entity_id.includes('0x00158d008b77ac43')) {
-        if (entity_id.includes('temperature')) pushTo('pizza2', 'temperature');
-        if (entity_id.includes('humidity')) pushTo('pizza2', 'humidity');
-        if (entity_id.includes('battery')) pushTo('pizza2', 'battery');
+      const json = await response.json();
+      if (json && json[0]) {
+        results[fridge][type] = json[0].map(point => ({
+          x: point.last_changed,
+          y: parseFloat(point.state)
+        }));
       }
     }
-
-    res.status(200).json(result);
-  } catch (error) {
-    console.error('History API error:', error);
-    res.status(500).json({ error: 'Failed to load historical data' });
   }
+
+  res.status(200).json(results);
 }
