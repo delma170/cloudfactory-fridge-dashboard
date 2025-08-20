@@ -1,18 +1,35 @@
 export default async function handler(req, res) {
   const token = process.env.HA_TOKEN;
   const baseUrl = process.env.HA_BASE_URL;
-  const hours = req.query.hours || 24;
 
-  // Fetch sensor data using /api/history/ endpoint
-  const url = `${baseUrl}/api/history/period/${new Date(Date.now() - hours * 3600000).toISOString()}?filter_entity_id=sensor.kitchen_temperature,sensor.kitchen_humidity,sensor.kitchen_battery`;
+  const hours = parseInt(req.query.hours) || 24;
+  const from = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
 
-  const response = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${token}`
-    }
-  });
+  const sensorIds = [
+    "sensor.0x00158d008b77ac1d_temperature",  // kitchen temp
+    "sensor.0x00158d008b77ac1d_humidity",     // kitchen humidity
+    "sensor.0x00158d008b77ac1d_battery"       // kitchen battery
+  ];
 
-  const history = await response.json();
-  // Parse history...
-  res.status(200).json(parsedData);
+  const query = sensorIds.map(id => `filter_entity_id=${id}`).join("&");
+  const url = `${baseUrl}/api/history/period/${from}?${query}`;
+
+  try {
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    if (!response.ok) throw new Error("Failed to fetch");
+
+    const history = await response.json();
+
+    const timestamps = history[0]?.map(point => point.last_changed) || [];
+    const temperature = history[0]?.map(point => parseFloat(point.state)) || [];
+    const humidity = history[1]?.map(point => parseFloat(point.state)) || [];
+    const battery = history[2]?.map(point => parseFloat(point.state)) || [];
+
+    res.status(200).json({ timestamps, temperature, humidity, battery });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to load data", details: error.message });
+  }
 }
