@@ -1,23 +1,41 @@
-<script>
-  async function loadData() {
-    try {
-      const res = await fetch("/api/fridge");
-      const data = await res.json();
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Cloud Factory Fridge Temps</title>
+    <meta charset="UTF-8" />
+    <style>
+      body { font-family: sans-serif; padding: 2rem; text-align: center; }
+      .temp { font-size: 2rem; margin: 1rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Fridge Temperatures</h1>
+    <div class="temp" id="kitchen">Loading...</div>
+    <div class="temp" id="pizza1">Loading...</div>
+    <div class="temp" id="pizza2">Loading...</div>
 
-      for (const id in data) {
-        const el = document.getElementById(id);
-        if (data[id].error) {
-          el.innerText = "Error loading data";
-        } else {
-          el.innerText = `${data[id].name}: ${data[id].state} °C`;
+    <script>
+      async function fetchTemps() {
+        try {
+          const res = await fetch('/api/fridge');
+          const data = await res.json();
+
+          for (const key of ['kitchen', 'pizza1', 'pizza2']) {
+            const el = document.getElementById(key);
+            if (data[key]?.error) {
+              el.innerText = "Error loading data";
+            } else {
+              el.innerText = `${data[key].name}: ${data[key].state} °C`;
+            }
+          }
+        } catch (err) {
+          document.getElementById("kitchen").innerText = "Error loading data";
+          document.getElementById("pizza1").innerText = "Error loading data";
+          document.getElementById("pizza2").innerText = "Error loading data";
         }
       }
-    } catch {
-      document.querySelectorAll(".temp").forEach(el => {
-        el.innerText = "Error loading data";
-      });
-    }
-  }
 
-  loadData();
-</script>
+      fetchTemps();
+    </script>
+  </body>
+</html>
