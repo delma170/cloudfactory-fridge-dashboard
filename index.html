@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Cloud Factory Fridge Dashboard</title>
   <style>
     body {
@@ -10,23 +10,19 @@
       padding: 2rem;
       text-align: center;
     }
-    h1 {
-      font-size: 2.5rem;
-      margin-bottom: 2rem;
-    }
     .card {
       background: white;
       border-radius: 10px;
       box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-      padding: 2rem;
+      padding: 1.5rem;
       margin: 1rem auto;
-      max-width: 500px;
+      max-width: 400px;
     }
-    .fridge-name {
-      font-size: 1.5rem;
+    .name {
+      font-size: 1.2rem;
       font-weight: bold;
     }
-    .temperature {
+    .value {
       font-size: 2rem;
       margin-top: 0.5rem;
     }
@@ -36,16 +32,16 @@
   <h1>Cloud Factory Fridge Dashboard</h1>
 
   <div class="card" id="kitchen">
-    <div class="fridge-name">Loading...</div>
-    <div class="temperature">-- °C</div>
+    <div class="name">Loading...</div>
+    <div class="value">-- °C</div>
   </div>
   <div class="card" id="pizza1">
-    <div class="fridge-name">Loading...</div>
-    <div class="temperature">-- °C</div>
+    <div class="name">Loading...</div>
+    <div class="value">-- °C</div>
   </div>
   <div class="card" id="pizza2">
-    <div class="fridge-name">Loading...</div>
-    <div class="temperature">-- °C</div>
+    <div class="name">Loading...</div>
+    <div class="value">-- °C</div>
   </div>
 
   <script>
@@ -54,24 +50,27 @@
         const res = await fetch('/api/fridge-data');
         const data = await res.json();
 
-        const updateCard = (key, sensor) => {
-          const card = document.getElementById(key);
-          if (card) {
-            card.querySelector('.fridge-name').textContent = sensor.name || 'No name';
-            card.querySelector('.temperature').textContent = `${sensor.state || '--'} °C`;
+        const update = (id, info) => {
+          const card = document.getElementById(id);
+          if (card && info && !info.error) {
+            card.querySelector('.name').textContent = info.name || 'No name';
+            card.querySelector('.value').textContent = `${info.state} °C`;
+          } else {
+            card.querySelector('.name').textContent = 'Error loading';
+            card.querySelector('.value').textContent = '-- °C';
           }
         };
 
-        updateCard('kitchen', data.kitchen);
-        updateCard('pizza1', data.pizza1);
-        updateCard('pizza2', data.pizza2);
+        update('kitchen', data.kitchen);
+        update('pizza1', data.pizza1);
+        update('pizza2', data.pizza2);
       } catch (err) {
-        console.error('Error loading fridge data:', err);
+        console.error('Error fetching data:', err);
       }
     }
 
     fetchFridgeData();
-    setInterval(fetchFridgeData, 60000); // refresh every 60 sec
+    setInterval(fetchFridgeData, 60000); // refresh every 60 seconds
   </script>
 </body>
 </html>
