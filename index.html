@@ -1,129 +1,145 @@
 <!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <title>Cloud Factory Fridge Dashboard</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-      body {
-        font-family: sans-serif;
-        background-color: #f5f5f5;
-        text-align: center;
-        padding: 2rem;
-      }
-      h1 {
-        font-size: 2.5rem;
-        margin-bottom: 2rem;
-      }
-      .container {
-        max-width: 1000px;
-        margin: 0 auto;
-        background: #fff;
-        padding: 2rem;
-        border-radius: 12px;
-        box-shadow: 0 0 20px rgba(0,0,0,0.1);
-      }
-      canvas {
-        margin: 2rem 0;
-      }
-    </style>
-  </head>
-  <body>
-    <h1>Cloud Factory Fridge Dashboard</h1>
-    <div class="container">
-      <label for="period">Select period:
-        <select id="period">
-          <option value="1">1 Hour</option>
-          <option value="6">6 Hours</option>
-          <option value="12">12 Hours</option>
-          <option value="24" selected>24 Hours</option>
-          <option value="48">48 Hours</option>
-        </select>
-      </label>
-      <canvas id="fridgeChart"></canvas>
-    </div>
+<html>
+<head>
+  <title>Cloud Factory Fridge Dashboard</title>
+  <meta charset="UTF-8" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #f8f8f8;
+      text-align: center;
+      padding: 2rem;
+    }
+    .container {
+      background: white;
+      padding: 2rem;
+      margin: auto;
+      border-radius: 10px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+      width: 90%;
+      max-width: 900px;
+    }
+    canvas {
+      margin-top: 2rem;
+    }
+    select {
+      margin-top: 1rem;
+      font-size: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>Cloud Factory Fridge Dashboard</h1>
+  <div class="container">
+    <label for="period">Select period: </label>
+    <select id="period">
+      <option value="6">6 Hours</option>
+      <option value="12">12 Hours</option>
+      <option value="24" selected>24 Hours</option>
+      <option value="48">48 Hours</option>
+      <option value="72">72 Hours</option>
+    </select>
+    <canvas id="fridgeChart" height="100"></canvas>
+  </div>
 
-    <script>
-      const ctx = document.getElementById('fridgeChart').getContext('2d');
-      let chart;
+  <script>
+    const ctx = document.getElementById('fridgeChart').getContext('2d');
+    let fridgeChart;
 
-      const colorZones = {
-        temperature: { safe: [0, 10], warn: [10, 15], alert: [15, 100] },
-        humidity: { safe: [30, 60], warn: [20, 30], alert: [0, 20] },
-        battery: { safe: [50, 100], warn: [20, 50], alert: [0, 20] }
-      };
+    async function fetchFridgeData(periodHours) {
+      const res = await fetch(`/api/fridge-history?hours=${periodHours}`);
+      return await res.json();
+    }
 
-      function getColor(value, type) {
-        const { safe, warn, alert } = colorZones[type];
-        if (value >= safe[0] && value <= safe[1]) return 'green';
-        if (value >= warn[0] && value <= warn[1]) return 'orange';
-        return 'red';
-      }
+    function renderChart(data) {
+      const labels = data.timestamps;
 
-      async function fetchData(hours) {
-        const res = await fetch(`/api/fridge?hours=${hours}`);
-        const data = await res.json();
-        return data;
-      }
+      const datasets = [
+        {
+          label: 'Temperature (°C)',
+          data: data.temperature,
+          borderColor: '#FF6384',
+          backgroundColor: 'rgba(255, 99, 132, 0.1)',
+          yAxisID: 'y-temp',
+        },
+        {
+          label: 'Humidity (%)',
+          data: data.humidity,
+          borderColor: '#36A2EB',
+          backgroundColor: 'rgba(54, 162, 235, 0.1)',
+          yAxisID: 'y-hum',
+        },
+        {
+          label: 'Battery (%)',
+          data: data.battery,
+          borderColor: '#FFCE56',
+          backgroundColor: 'rgba(255, 206, 86, 0.1)',
+          yAxisID: 'y-batt',
+        }
+      ];
 
-      function drawChart(data) {
-        const labels = data.timestamps;
-        const datasets = [
-          {
-            label: 'Temperature (Kitchen)',
-            data: data.kitchen.temperature,
-            borderColor: 'red',
-            backgroundColor: data.kitchen.temperature.map(v => getColor(v, 'temperature')),
-            fill: false,
-          },
-          {
-            label: 'Humidity (Kitchen)',
-            data: data.kitchen.humidity,
-            borderColor: 'blue',
-            backgroundColor: data.kitchen.humidity.map(v => getColor(v, 'humidity')),
-            fill: false,
-          },
-          {
-            label: 'Battery (Kitchen)',
-            data: data.kitchen.battery,
-            borderColor: 'goldenrod',
-            backgroundColor: data.kitchen.battery.map(v => getColor(v, 'battery')),
-            fill: false,
-          }
-        ];
+      if (fridgeChart) fridgeChart.destroy();
 
-        if (chart) chart.destroy();
-
-        chart = new Chart(ctx, {
-          type: 'line',
-          data: { labels, datasets },
-          options: {
-            responsive: true,
-            plugins: {
-              legend: { position: 'top' },
-              title: { display: true, text: 'Kitchen Fridge Sensors' },
-            },
-            scales: {
-              y: {
-                title: { display: true, text: 'Value' }
+      fridgeChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets
+        },
+        options: {
+          responsive: true,
+          scales: {
+            'y-temp': {
+              type: 'linear',
+              position: 'left',
+              min: 0,
+              max: 40,
+              title: {
+                display: true,
+                text: 'Temperature (°C)'
               },
-              x: {
-                title: { display: true, text: 'Time' }
+              grid: { drawOnChartArea: false },
+              ticks: {
+                callback: function (value) {
+                  if (value >= 8 && value <= 15) return `⚠️ ${value}`;
+                  return value;
+                },
+                color: function(value) {
+                  return value.tick.value >= 8 && value.tick.value <= 15 ? 'red' : 'black';
+                }
               }
+            },
+            'y-hum': {
+              type: 'linear',
+              position: 'right',
+              min: 0,
+              max: 100,
+              title: {
+                display: true,
+                text: 'Humidity (%)'
+              },
+              grid: { drawOnChartArea: false },
+            },
+            'y-batt': {
+              type: 'linear',
+              position: 'right',
+              display: false
             }
           }
-        });
-      }
+        }
+      });
+    }
 
-      async function updateChart() {
-        const hours = document.getElementById('period').value;
-        const data = await fetchData(hours);
-        drawChart(data);
-      }
+    async function updateChart() {
+      const hours = document.getElementById('period').value;
+      const fridgeData = await fetchFridgeData(hours);
+      renderChart(fridgeData);
+    }
 
-      document.getElementById('period').addEventListener('change', updateChart);
+    document.getElementById('period').addEventListener('change', updateChart);
 
-      updateChart();
-    </script>
-  </body>
+    updateChart();
+  </script>
+</body>
 </html>
