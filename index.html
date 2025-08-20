@@ -47,7 +47,7 @@
   <script>
     async function fetchFridgeData() {
       try {
-        const res = await fetch('/api/fridge-data');
+        const res = await fetch('/api/fridge');
         const data = await res.json();
 
         const update = (id, info) => {
