@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Cloud Factory Fridge Temps</title>
+    <meta charset="UTF-8" />
+    <style>
+      body { font-family: sans-serif; padding: 2rem; text-align: center; }
+      .temp { font-size: 2rem; margin: 1rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Fridge Temperatures</h1>
+    <div class="temp" id="kitchen">Loading...</div>
+    <div class="temp" id="pizza1">Loading...</div>
+    <div class="temp" id="pizza2">Loading...</div>
+
+    <script>
+      const token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiIzYWZlMWE1ZmQ1ODg0MmI4YTZjODhiNjQwYzk2N2EwZiIsImlhdCI6MTc1NTcwNDA3NywiZXhwIjoyMDcxMDY0MDc3fQ.tq8xCBecPM5IfZw35UM7clgIaw9xRJkBMWPUCoR2v3g";
+      const baseUrl = "https://hx4ij1ig7jdmrplgov1gt3n6zbadfev8.ui.nabu.casa"; // replace this
+
+      const sensors = {
+        kitchen: "sensor.0x00158d008b77ac1d",
+        pizza1: "sensor.0x00158d008b77bf5e",
+        pizza2: "sensor.0x00158d008b77ac43"
+      };
+
+      async function fetchTemp(entity, id) {
+        try {
+          const res = await fetch(`${baseUrl}/api/states/${entity}`, {
+            headers: { "Authorization": `Bearer ${token}` }
+          });
+          const data = await res.json();
+          document.getElementById(id).innerText =
+            `${data.attributes.friendly_name}: ${data.state} °C`;
+        } catch (e) {
+          document.getElementById(id).innerText = "Error loading data";
+        }
+      }
+
+      for (let [id, entity] of Object.entries(sensors)) {
+        fetchTemp(entity, id);
+      }
+    </script>
+  </body>
+</html>
