@@ -1,104 +1,88 @@
 export default async function handler(req, res) {
-  const token = process.env.HA_TOKEN;
-  const baseUrl = process.env.HA_URL;
+  const token = process.env.HA_TOKEN; // stored in Vercel env vars
+  const baseUrl = process.env.HA_URL; // stored in Vercel env vars
 
-  const hours = parseInt(req.query.hours || '24'); // default to 24h
-  const endTime = new Date();
-  const startTime = new Date(endTime.getTime() - hours * 60 * 60 * 1000);
+  const hours = parseInt(req.query.hours) || 24;
 
-  const sensorEntities = {
-    temperature: [
-      "sensor.0x00158d008b77ac1d_temperature",
-      "sensor.0x00158d008b77bf5e_temperature",
-      "sensor.0x00158d008b77ac43_temperature"
-    ],
-    humidity: [
-      "sensor.0x00158d008b77ac1d_humidity",
-      "sensor.0x00158d008b77bf5e_humidity",
-      "sensor.0x00158d008b77ac43_humidity"
-    ],
-    battery: [
-      "sensor.0x00158d008b77ac1d_battery",
-      "sensor.0x00158d008b77bf5e_battery",
-      "sensor.0x00158d008b77ac43_battery"
-    ]
-  };
+  const end = new Date();
+  const start = new Date(end.getTime() - hours * 60 * 60 * 1000);
 
-  const entityIds = [
-    ...sensorEntities.temperature,
-    ...sensorEntities.humidity,
-    ...sensorEntities.battery
+  const sensorIds = [
+    'sensor.0x00158d008b77ac1d_temperature',
+    'sensor.0x00158d008b77ac1d_humidity',
+    'sensor.0x00158d008b77ac1d_battery',
+    'sensor.0x00158d008b77bf5e_temperature',
+    'sensor.0x00158d008b77bf5e_humidity',
+    'sensor.0x00158d008b77bf5e_battery',
+    'sensor.0x00158d008b77ac43_temperature',
+    'sensor.0x00158d008b77ac43_humidity',
+    'sensor.0x00158d008b77ac43_battery'
   ];
 
   const params = new URLSearchParams({
-    filter_entity_id: entityIds.join(','),
-    start_time: startTime.toISOString(),
-    end_time: endTime.toISOString(),
+    start_time: start.toISOString(),
+    end_time: end.toISOString(),
     minimal_response: 'true',
-    no_attributes: 'true'
+    filter_entity_id: sensorIds.join(',')
   });
 
-  const url = `${baseUrl}/api/fridge-history/period?${params.toString()}`;
-
   try {
-    const response = await fetch(url, {
+    const response = await fetch(`${baseUrl}/api/history/period?${params.toString()}`, {
       headers: {
         Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json"
+        'Content-Type': 'application/json'
       }
     });
 
     if (!response.ok) {
-      return res.status(response.status).json({ error: "Failed to fetch history" });
+      throw new Error(`Failed to fetch history: ${response.statusText}`);
     }
 
-    const data = await response.json();
+    const history = await response.json();
 
-    // Structure response into graphable datasets
     const result = {
-      labels: [], // shared time axis
+      timestamps: [],
       kitchen: { temperature: [], humidity: [], battery: [] },
       pizza1: { temperature: [], humidity: [], battery: [] },
       pizza2: { temperature: [], humidity: [], battery: [] }
     };
 
-    const sensorMap = {
-      "sensor.0x00158d008b77ac1d_temperature": ["kitchen", "temperature"],
-      "sensor.0x00158d008b77bf5e_temperature": ["pizza1", "temperature"],
-      "sensor.0x00158d008b77ac43_temperature": ["pizza2", "temperature"],
+    for (const entity of history) {
+      if (!entity.length) continue;
 
-      "sensor.0x00158d008b77ac1d_humidity": ["kitchen", "humidity"],
-      "sensor.0x00158d008b77bf5e_humidity": ["pizza1", "humidity"],
-      "sensor.0x00158d008b77ac43_humidity": ["pizza2", "humidity"],
+      const { entity_id } = entity[0];
+      const datapoints = entity.map(e => ({
+        time: e.last_changed,
+        value: parseFloat(e.state)
+      })).filter(e => !isNaN(e.value));
 
-      "sensor.0x00158d008b77ac1d_battery": ["kitchen", "battery"],
-      "sensor.0x00158d008b77bf5e_battery": ["pizza1", "battery"],
-      "sensor.0x00158d008b77ac43_battery": ["pizza2", "battery"]
-    };
-
-    for (const entity of data) {
-      const [sensorId] = entity;
-      const entries = entity;
-
-      const [location, type] = sensorMap[sensorId] || [];
-
-      if (location && type) {
-        const points = entries.map(entry => ({
-          x: entry.last_changed,
-          y: parseFloat(entry.state)
-        })).filter(p => !isNaN(p.y));
-
-        result[location][type] = points;
-
-        if (type === "temperature" && result.labels.length === 0) {
-          result.labels = points.map(p => p.x);
+      const pushTo = (target, field) => {
+        if (result.timestamps.length === 0) {
+          result.timestamps = datapoints.map(d => new Date(d.time).toLocaleString());
         }
+        result[target][field] = datapoints.map(d => d.value);
+      };
+
+      if (entity_id.includes('0x00158d008b77ac1d')) {
+        if (entity_id.includes('temperature')) pushTo('kitchen', 'temperature');
+        if (entity_id.includes('humidity')) pushTo('kitchen', 'humidity');
+        if (entity_id.includes('battery')) pushTo('kitchen', 'battery');
+      }
+      if (entity_id.includes('0x00158d008b77bf5e')) {
+        if (entity_id.includes('temperature')) pushTo('pizza1', 'temperature');
+        if (entity_id.includes('humidity')) pushTo('pizza1', 'humidity');
+        if (entity_id.includes('battery')) pushTo('pizza1', 'battery');
+      }
+      if (entity_id.includes('0x00158d008b77ac43')) {
+        if (entity_id.includes('temperature')) pushTo('pizza2', 'temperature');
+        if (entity_id.includes('humidity')) pushTo('pizza2', 'humidity');
+        if (entity_id.includes('battery')) pushTo('pizza2', 'battery');
       }
     }
 
     res.status(200).json(result);
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Error fetching historical sensor data" });
+    console.error('History API error:', error);
+    res.status(500).json({ error: 'Failed to load historical data' });
   }
 }
