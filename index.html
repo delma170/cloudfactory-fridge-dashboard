@@ -1,41 +1,157 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>Cloud Factory Fridge Temps</title>
+    <title>Cloud Factory Fridge Dashboard</title>
     <meta charset="UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-      body { font-family: sans-serif; padding: 2rem; text-align: center; }
-      .temp { font-size: 2rem; margin: 1rem; }
+      body {
+        font-family: sans-serif;
+        padding: 2rem;
+        background: #f9f9f9;
+        text-align: center;
+      }
+      h1 {
+        margin-bottom: 2rem;
+      }
+      .chart-container {
+        width: 90%;
+        max-width: 800px;
+        margin: 2rem auto;
+        background: white;
+        border-radius: 10px;
+        padding: 1rem;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      }
+      canvas {
+        margin-top: 1rem;
+      }
     </style>
   </head>
   <body>
-    <h1>Fridge Temperatures</h1>
-    <div class="temp" id="kitchen">Loading...</div>
-    <div class="temp" id="pizza1">Loading...</div>
-    <div class="temp" id="pizza2">Loading...</div>
+    <h1>Fridge Dashboard</h1>
+
+    <label for="range">Show data from the past:
+      <select id="range">
+        <option value="1">1 hour</option>
+        <option value="6">6 hours</option>
+        <option value="12">12 hours</option>
+        <option value="24">24 hours</option>
+        <option value="48">48 hours</option>
+      </select>
+    </label>
+
+    <div class="chart-container">
+      <h2>Fridge Kitchen</h2>
+      <canvas id="kitchenChart"></canvas>
+    </div>
+    <div class="chart-container">
+      <h2>Pizza Fridge 1</h2>
+      <canvas id="pizza1Chart"></canvas>
+    </div>
+    <div class="chart-container">
+      <h2>Pizza Fridge 2</h2>
+      <canvas id="pizza2Chart"></canvas>
+    </div>
 
     <script>
-      async function fetchTemps() {
-        try {
-          const res = await fetch('/api/fridge');
-          const data = await res.json();
+      const sensors = {
+        kitchen: "sensor.0x00158d008b77ac1d_temperature",
+        pizza1: "sensor.0x00158d008b77bf5e_temperature",
+        pizza2: "sensor.0x00158d008b77ac43_temperature"
+      };
 
-          for (const key of ['kitchen', 'pizza1', 'pizza2']) {
-            const el = document.getElementById(key);
-            if (data[key]?.error) {
-              el.innerText = "Error loading data";
-            } else {
-              el.innerText = `${data[key].name}: ${data[key].state} °C`;
+      const batterySensors = {
+        kitchen: "sensor.0x00158d008b77ac1d_battery",
+        pizza1: "sensor.0x00158d008b77bf5e_battery",
+        pizza2: "sensor.0x00158d008b77ac43_battery"
+      };
+
+      const humiditySensors = {
+        kitchen: "sensor.0x00158d008b77ac1d_humidity",
+        pizza1: "sensor.0x00158d008b77bf5e_humidity",
+        pizza2: "sensor.0x00158d008b77ac43_humidity"
+      };
+
+      const chartRefs = {
+        kitchen: new Chart(document.getElementById("kitchenChart"), config("Fridge Kitchen")),
+        pizza1: new Chart(document.getElementById("pizza1Chart"), config("Pizza Fridge 1")),
+        pizza2: new Chart(document.getElementById("pizza2Chart"), config("Pizza Fridge 2"))
+      };
+
+      function config(label) {
+        return {
+          type: 'line',
+          data: {
+            labels: [],
+            datasets: [
+              {
+                label: "Temperature (°C)",
+                borderColor: "#ff6384",
+                backgroundColor: "#ff6384",
+                fill: false,
+                data: []
+              },
+              {
+                label: "Humidity (%)",
+                borderColor: "#36a2eb",
+                backgroundColor: "#36a2eb",
+                fill: false,
+                data: []
+              },
+              {
+                label: "Battery (%)",
+                borderColor: "#ffce56",
+                backgroundColor: "#ffce56",
+                fill: false,
+                data: []
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            scales: {
+              x: { title: { display: true, text: 'Time' } },
+              y: {
+                title: { display: true, text: 'Value' },
+                suggestedMin: 0,
+                suggestedMax: 100
+              }
             }
           }
-        } catch (err) {
-          document.getElementById("kitchen").innerText = "Error loading data";
-          document.getElementById("pizza1").innerText = "Error loading data";
-          document.getElementById("pizza2").innerText = "Error loading data";
+        };
+      }
+
+      async function fetchSensorHistory(sensor, hours) {
+        const end = new Date();
+        const start = new Date(end.getTime() - hours * 60 * 60 * 1000);
+        const url = `/api/history?sensor=${sensor}&start=${start.toISOString()}&end=${end.toISOString()}`;
+        const res = await fetch(url);
+        return res.ok ? res.json() : [];
+      }
+
+      async function updateCharts(hours) {
+        for (const key of Object.keys(sensors)) {
+          const [temp, hum, bat] = await Promise.all([
+            fetchSensorHistory(sensors[key], hours),
+            fetchSensorHistory(humiditySensors[key], hours),
+            fetchSensorHistory(batterySensors[key], hours)
+          ]);
+
+          const chart = chartRefs[key];
+          chart.data.labels = temp.map(e => new Date(e.last_changed).toLocaleTimeString());
+          chart.data.datasets[0].data = temp.map(e => parseFloat(e.state));
+          chart.data.datasets[1].data = hum.map(e => parseFloat(e.state));
+          chart.data.datasets[2].data = bat.map(e => parseFloat(e.state));
+          chart.update();
         }
       }
 
-      fetchTemps();
+      document.getElementById("range").addEventListener("change", e => {
+        updateCharts(parseInt(e.target.value));
+      });
+
+      updateCharts(1); // default
     </script>
   </body>
 </html>
